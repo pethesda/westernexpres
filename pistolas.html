@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WESTERN EXPRES</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+    body {
+      margin: 0;
+      background: #2b1b0e;
+      color: #f4e3c1;
+      font-family: 'Special Elite', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      border: 4px solid #d7b26a;
+      box-shadow: 0 0 20px #000;
+      margin-top: -30px;
+      display: none;
+    }
+    #message {
+      margin-top: 10px;
+      font-size: 1.8em;
+      text-shadow: 2px 2px #000;
+      min-height: 50px;
+    }
+    #scoreContainer {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid #fff;
+      font-size: 1.2em;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      width: 220px;
+      user-select: none;
+      z-index: 10;
+    }
+    #hourglass {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      font-size: 4em;
+      animation: spin 2s linear infinite;
+      width: 80px;
+      height: 80px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      z-index: 10;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    #quote {
+      margin-top: 10px;
+      font-size: 1.2em;
+      opacity: 0;
+      transition: opacity 1s ease;
+      height: 30px;
+      text-align: center;
+      user-select: none;
+    }
+    #startScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #2b1b0e;
+      color: #f4e3c1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Special Elite', monospace;
+      z-index: 20;
+      user-select: none;
+    }
+    #startScreen h1 {
+      font-size: 3em;
+      margin-bottom: 20px;
+      text-shadow: 3px 3px #000;
+    }
+    #startScreen button {
+      background: #d7b26a;
+      border: none;
+      padding: 12px 24px;
+      font-size: 1.5em;
+      font-family: 'Special Elite', monospace;
+      color: #2b1b0e;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 0 10px #d7b26a;
+      transition: background-color 0.3s ease;
+    }
+    #startScreen button:hover {
+      background: #b69646;
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>WESTERN EXPRES</h1>
+    <button id="startButton">Jugar</button>
+  </div>
+  <canvas id="gameCanvas" width="736" height="552"></canvas>
+  <div id="message">Presiona espacio para empezar</div>
+  <div id="quote"></div>
+  <div id="scoreContainer">
+    <div id="score">Duelos ganados: 0</div>
+    <div id="bestReaction">Mejor tiempo: -- ms</div>
+    <div id="recordStreak">Racha máxima: 0</div>
+  </div>
+  <div id="hourglass">⏳</div>
+  <audio id="audioMusica" src="musica.mp3"></audio>
+  <audio id="audioDisparo" src="disparo.mp3"></audio>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const message = document.getElementById("message");
+    const scoreDisplay = document.getElementById("score");
+    const bestReactionDisplay = document.getElementById("bestReaction");
+    const recordStreakDisplay = document.getElementById("recordStreak");
+    const quoteDisplay = document.getElementById("quote");
+    const hourglass = document.getElementById("hourglass");
+    const scoreContainer = document.getElementById("scoreContainer");
+    const startScreen = document.getElementById("startScreen");
+    const startButton = document.getElementById("startButton");
+    const audioMusica = document.getElementById("audioMusica");
+    const audioDisparo = document.getElementById("audioDisparo");
+    let gameState = "idle";
+    let canShoot = false;
+    let startTime = 0;
+    let score = 0;
+    let currentStreak = 0;
+    let maxStreak = 0;
+    let bestReaction = null;
+    let spaceReleased = true;
+    const frasesVictoria = [
+      "Buen disparo, vaquero.",
+      "Rápido como un rayo.",
+      "Eres el más rápido del oeste.",
+      "Ese fue un tiro legendario.",
+      "Polvo eres... y polvo hiciste.",
+      "No quedó ni para el sepelio.",
+      "Sin dudar, sin temblar.",
+      "Un duelo más para la historia.",
+      "Tu reputación crece, forastero.",
+      "Otro bandido menos en el pueblo."
+    ];
+    const frasesDerrota = [
+      "Te fallaron los reflejos, vaquero.",
+      "No hay lugar para los dos en este pueblo... y perdiste.",
+      "El oeste es cruel con los lentos.",
+      "Ese disparo fue tu final.",
+      "Demasiado tarde, forastero.",
+      "Te tomó por sorpresa.",
+      "La próxima vez apunta más rápido.",
+      "Tu historia termina aquí.",
+      "Era más rápido que tú.",
+      "Ni lo viste venir."
+    ];
+    const fondo = new Image(); fondo.src = 'fondo.png';
+    const jugador1 = new Image(); jugador1.src = 'jugador1.png';
+    const jugador2 = new Image(); jugador2.src = 'jugador2.png';
+    const enemigo1 = new Image(); enemigo1.src = 'enemigo1.png';
+    const enemigo2 = new Image(); enemigo2.src = 'enemigo2.png';
+    let jugadorDisparo = false;
+    let enemigoDisparo = false;
+    let jugadorCaido = false;
+    let enemigoCaido = false;
+    const spriteWidth = 115;
+    const spriteHeight = 115;
+  </script>
+  <script>
+function drawScene() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(fondo, 0, -10, canvas.width, canvas.height);
+  if (jugadorCaido) {
+    ctx.save();
+    ctx.translate(138 + spriteWidth / 2, canvas.height - 175 + spriteHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.drawImage(jugador1, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
+    ctx.restore();
+  } else {
+    const jugadorImg = jugadorDisparo ? jugador2 : jugador1;
+    ctx.drawImage(jugadorImg, 138, canvas.height - 230, spriteWidth, spriteHeight);
+  }
+  if (enemigoCaido) {
+    ctx.save();
+    ctx.translate(canvas.width - 276 + spriteWidth / 2, canvas.height - 175 + spriteHeight / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(enemigo1, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
+    ctx.restore();
+  } else {
+    const enemigoImg = enemigoDisparo ? enemigo2 : enemigo1;
+    ctx.drawImage(enemigoImg, canvas.width - 276, canvas.height - 230, spriteWidth, spriteHeight);
+  }
+}
+function mostrarFrase(array) {
+  const frase = array[Math.floor(Math.random() * array.length)];
+  quoteDisplay.textContent = frase;
+  quoteDisplay.style.opacity = 1;
+}
+function playDisparo() {
+  audioDisparo.currentTime = 0;
+  audioDisparo.play();
+}
+function startDuel() {
+  jugadorDisparo = false;
+  enemigoDisparo = false;
+  jugadorCaido = false;
+  enemigoCaido = false;
+  quoteDisplay.style.opacity = 0;
+  drawScene();
+  message.textContent = "Prepárate...";
+  hourglass.style.display = "flex";
+  gameState = "waiting";
+  canShoot = false;
+  canAdvance = false;
+  const delay = 1000 + Math.random() * 2000;
+  setTimeout(() => {
+    showDrawSignal();
+  }, delay);
+}
+function showDrawSignal() {
+  message.textContent = "¡DISPARA!";
+  hourglass.style.display = "none";
+  gameState = "draw";
+  canShoot = true;
+  startTime = performance.now();
+  drawScene();
+  setTimeout(() => {
+    if (gameState === "draw") {
+      enemigoDisparo = true;
+      playDisparo();
+      drawScene();
+      lose("El enemigo te disparó primero");
+    }
+  }, 300);
+}
+function win(reactionTime) {
+  gameState = "result";
+  canShoot = false;
+  canAdvance = false;
+  jugadorDisparo = true;
+  playDisparo();
+  drawScene();
+  setTimeout(() => {
+    enemigoCaido = true;
+    drawScene();
+    setTimeout(() => {
+      canAdvance = true;
+    }, 300);
+  }, 200);
+  score++;
+  currentStreak++;
+  if (currentStreak > maxStreak) maxStreak = currentStreak;
+  if (bestReaction === null || reactionTime < bestReaction) bestReaction = reactionTime;
+  scoreDisplay.textContent = `Duelos ganados: ${score}`;
+  bestReactionDisplay.textContent = `Mejor tiempo: ${bestReaction.toFixed(0)} ms`;
+  recordStreakDisplay.textContent = `Racha máxima: ${maxStreak}`;
+  mostrarFrase(frasesVictoria);
+  message.textContent = `Ganaste! Tiempo de reacción: ${reactionTime.toFixed(0)} ms`;
+}
+function lose(reason) {
+  gameState = "result";
+  canShoot = false;
+  canAdvance = false;
+  enemigoDisparo = true;
+  playDisparo();
+  jugadorCaido = true;
+  drawScene();
+  currentStreak = 0;
+  scoreDisplay.textContent = `Duelos ganados: ${score}`;
+  bestReactionDisplay.textContent = `Mejor tiempo: ${bestReaction === null ? '--' : bestReaction.toFixed(0)} ms`;
+  recordStreakDisplay.textContent = `Racha máxima: ${maxStreak}`;
+  mostrarFrase(frasesDerrota);
+  message.textContent = `Perdiste! ${reason}`;
+  setTimeout(() => {
+    canAdvance = true;
+  }, 300);
+}
+function resetGame() {
+  score = 0;
+  currentStreak = 0;
+  maxStreak = 0;
+  bestReaction = null;
+  scoreDisplay.textContent = `Duelos ganados: 0`;
+  bestReactionDisplay.textContent = `Mejor tiempo: -- ms`;
+  recordStreakDisplay.textContent = `Racha máxima: 0`;
+  message.textContent = "Presiona espacio para empezar";
+  quoteDisplay.style.opacity = 0;
+  jugadorDisparo = false;
+  enemigoDisparo = false;
+  jugadorCaido = false;
+  enemigoCaido = false;
+  drawScene();
+}
+function startGame() {
+  startScreen.style.display = "none";
+  canvas.style.display = "block";
+  scoreContainer.style.display = "flex";
+  hourglass.style.display = "none";
+  audioMusica.currentTime = 4;
+  audioMusica.play();
+  resetGame();
+  startDuel();
+}
+startButton.addEventListener("click", () => {
+  startGame();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" && e.code !== "Enter") return;
+  if (!spaceReleased) return;
+  spaceReleased = false;
+  if (gameState === "idle") {
+    startGame();
+  } else if (gameState === "waiting") {
+    jugadorCaido = true;
+    drawScene();
+    hourglass.style.display = "none";
+    lose("¡Disparaste antes de la señal!");
+  } else if (gameState === "draw" && canShoot) {
+    const reactionTime = performance.now() - startTime;
+    win(reactionTime);
+  } else if (gameState === "result" && canAdvance) {
+    startDuel();
+  }
+});
+window.addEventListener("keyup", (e) => {
+  if (e.code === "Space" || e.code === "Enter") {
+    spaceReleased = true;
+  }
+});
+fondo.onload = () => {
+  drawScene();
+};
+</script>
+
+</body>
+</html>
